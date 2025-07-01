@@ -1,0 +1,52 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: 'Sample SAM Template for cloudlib
+
+  '
+
+Globals:
+  Function:
+    Timeout: 100
+
+Resources:
+  PubApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      Name: cloudlib-api
+      StageName: Prod
+      Auth:
+        DefaultAuthorizer: NONE
+  CloudLibFunction:
+    Type: AWS::Serverless::Function
+    Metadata:
+      BuildMethod: go1.x
+      SamResourceId: CloudLibFunction
+    Properties:
+      FunctionName: cloudlib-handler
+      CodeUri: CloudLibFunction
+      Handler: bootstrap
+      Runtime: provided.al2
+      Architectures:
+      - x86_64
+      Policies:
+        - S3ReadPolicy:
+            BucketName: cloudlib-bucket
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            RestApiId: !Ref PubApi
+            Path: /text
+            Method: GET
+      Environment:
+        Variables:
+          BUCKET_NAME: cloudlib-bucket
+  FilesBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: cloudlib-bucket
+Outputs:
+  WebEndpoint:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${PubApi}.execute-api.${AWS::Region}.amazonaws.com/
