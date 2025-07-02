@@ -2,62 +2,72 @@ package main
 
 import (
 	"context"
-	"io"
+	"log"
 	"os"
-	"strings"
 
 	"github.com/aws/aws-lambda-go/events"
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/dgdraganov/cloudlib/store"
 )
 
-func handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+type BlobStore interface {
+	GetFileContent(ctx context.Context, bucket, fileKey string) (string, error)
+}
+
+type LambdaHandler struct {
+	store      BlobStore
+	bucketName string
+}
+
+func (l *LambdaHandler) handler(ctx context.Context, request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
 	fileKey := request.QueryStringParameters["file"]
 	if fileKey == "" {
+		log.Println("file query parameter is missing")
 		return events.APIGatewayProxyResponse{
 			StatusCode: 400,
-			Body:       "Missing file parameter",
+			Headers: map[string]string{
+				"Content-Type": "text/plain",
+			},
+			Body: "Missing file parameter",
 		}, nil
 	}
 
-	content, err := fetchFileContent(ctx, fileKey)
+	content, err := l.store.GetFileContent(ctx, l.bucketName, fileKey)
 	if err != nil {
+		log.Printf("fetching file content from s3: %s", err)
 		return events.APIGatewayProxyResponse{
 			StatusCode: 500,
-			Body:       err.Error(),
+			Headers: map[string]string{
+				"Content-Type": "text/plain",
+			},
+			Body: err.Error(),
 		}, nil
 	}
 
 	return events.APIGatewayProxyResponse{
 		StatusCode: 200,
-		Body:       content,
+		Headers: map[string]string{
+			"Content-Type": "text/plain",
+		},
+		Body: content,
 	}, nil
 }
 
-func fetchFileContent(ctx context.Context, fileKey string) (string, error) {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return "", err
-	}
-
-	client := s3.NewFromConfig(cfg)
-
-	out, err := client.GetObject(ctx, &s3.GetObjectInput{
-		Bucket: aws.String(os.Getenv("BUCKET_NAME")),
-		Key:    aws.String(fileKey),
-	})
-	if err != nil {
-		return "", err
-	}
-	defer out.Body.Close()
-
-	buf := new(strings.Builder)
-	_, err = io.Copy(buf, out.Body)
-	return buf.String(), err
-}
-
 func main() {
-	lambda.Start(handler)
+	s3store, err := store.NewS3BlobStore()
+	if err != nil {
+		log.Fatalf("failed to create S3 blob store: %v", err)
+	}
+
+	bucketName := os.Getenv("BUCKET_NAME")
+	if bucketName == "" {
+		log.Fatal("BUCKET_NAME environment variable is not set")
+	}
+
+	lh := &LambdaHandler{
+		store:      s3store,
+		bucketName: bucketName,
+	}
+
+	lambda.Start(lh.handler)
 }
