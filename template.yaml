@@ -23,7 +23,7 @@ Resources:
       SamResourceId: CloudLibFunction
     Properties:
       FunctionName: cloudlib-handler
-      CodeUri: CloudLibFunction
+      CodeUri: cloudlib-func
       Handler: bootstrap
       Runtime: provided.al2
       Architectures:
@@ -49,4 +49,4 @@ Outputs:
   WebEndpoint:
     Description: API Gateway endpoint URL
     Value:
-      Fn::Sub: https://${PubApi}.execute-api.${AWS::Region}.amazonaws.com/
+      Fn::Sub: https://${PubApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/text
